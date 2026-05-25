@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Honeypot Logger Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <header>
+        <h1>🛡️ Honeypot Logger</h1>
+        <div class="header-controls">
+            <span id="connection-count" class="badge">0</span>
+            <button id="btn-clear" class="btn btn-danger">Clear Events</button>
+        </div>
+    </header>
+
+    <main>
+        <!-- Stats Cards -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <span class="stat-label">Total Events</span>
+                <span id="stat-total" class="stat-value">0</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Unique IPs</span>
+                <span id="stat-unique" class="stat-value">0</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Events (Last 24h)</span>
+                <span id="stat-24h" class="stat-value">0</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Port Scan Alerts</span>
+                <span id="stat-alerts" class="stat-value">0</span>
+            </div>
+        </section>
+
+        <!-- Charts Row -->
+        <section class="charts-row">
+            <div class="chart-container">
+                <h3>Events by Port / Protocol</h3>
+                <canvas id="chart-protocol"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3>Events by Country</h3>
+                <canvas id="chart-country"></canvas>
+            </div>
+        </section>
+
+        <!-- Recent Events Table -->
+        <section class="events-section">
+            <h2>Recent Events</h2>
+            <div class="table-wrapper">
+                <table id="events-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Source IP</th>
+                            <th>Port</th>
+                            <th>Protocol</th>
+                            <th>Country</th>
+                            <th>City</th>
+                            <th>Payload Preview</th>
+                        </tr>
+                    </thead>
+                    <tbody id="events-body">
+                        <!-- Populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // -----------------------------------------------------------------------
+        // State
+        // -----------------------------------------------------------------------
+        let latestEventId = 0;
+        let protocolChart = null;
+        let countryChart = null;
+
+        // -----------------------------------------------------------------------
+        // Formatting helpers
+        // -----------------------------------------------------------------------
+        function formatTimestamp(ts) {
+            const d = new Date(ts);
+            return d.toLocaleTimeString();
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function truncate(str, max) {
+            if (!str) return '';
+            return str.length > max ? str.slice(0, max) + '...' : str;
+        }
+
+        // -----------------------------------------------------------------------
+        // Update stats cards
+        // -----------------------------------------------------------------------
+        function updateStats(stats) {
+            document.getElementById('stat-total').textContent = stats.total_events || 0;
+            document.getElementById('stat-unique').textContent = stats.unique_ips || 0;
+            document.getElementById('stat-24h').textContent = stats.last_24h || 0;
+            document.getElementById('connection-count').textContent = stats.total_events || 0;
+
+            const alertCount = (stats.portscan_alerts || []).length;
+            document.getElementById('stat-alerts').textContent = alertCount;
+        }
+
+        // -----------------------------------------------------------------------
+        // Update charts
+        // -----------------------------------------------------------------------
+        function updateCharts(stats) {
+            // Protocol chart
+            const protoLabels = (stats.by_protocol || []).map(r => r.protocol);
+            const protoValues = (stats.by_protocol || []).map(r => r.count);
+            const protoColors = [
+                '#e74c3c', '#3498db', '#2ecc71', '#f39c12',
+                '#9b59b6', '#1abc9c', '#e67e22', '#34495e'
+            ];
+
+            if (protocolChart) {
+                protocolChart.data.labels = protoLabels;
+                protocolChart.data.datasets[0].data = protoValues;
+                protocolChart.update();
+            } else {
+                const ctx = document.getElementById('chart-protocol').getContext('2d');
+                protocolChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: protoLabels,
+                        datasets: [{
+                            data: protoValues,
+                            backgroundColor: protoColors.slice(0, protoLabels.length),
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { position: 'right' }
+                        }
+                    }
+                });
+            }
+
+            // Country chart
+            const countryLabels = (stats.by_country || []).map(r => r.country);
+            const countryValues = (stats.by_country || []).map(r => r.country === 'Private' || r.country === 'Unknown' ? r.count : r.count);
+
+            if (countryChart) {
+                countryChart.data.labels = countryLabels;
+                countryChart.data.datasets[0].data = countryValues;
+                countryChart.update();
+            } else {
+                const ctx = document.getElementById('chart-country').getContext('2d');
+                countryChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: countryLabels,
+                        datasets: [{
+                            label: 'Connections',
+                            data: countryValues,
+                            backgroundColor: '#3498db',
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: { beginAtZero: true }
+                        }
+                    }
+                });
+            }
+        }
+
+        // -----------------------------------------------------------------------
+        // Update events table
+        // -----------------------------------------------------------------------
+        function updateEvents(events) {
+            const tbody = document.getElementById('events-body');
+            tbody.innerHTML = '';
+            events.forEach(ev => {
+                const row = document.createElement('tr');
+                const payloadPreview = truncate(ev.payload || '', 60);
+                row.innerHTML = `
+                    <td>${escapeHtml(formatTimestamp(ev.timestamp))}</td>
+                    <td class="ip-cell">${escapeHtml(ev.source_ip)}</td>
+                    <td>${escapeHtml(String(ev.dest_port))}</td>
+                    <td><span class="protocol-badge">${escapeHtml(ev.protocol)}</span></td>
+                    <td>${escapeHtml(ev.country || 'Unknown')}</td>
+                    <td>${escapeHtml(ev.city || 'Unknown')}</td>
+                    <td class="payload-cell"><code>${escapeHtml(payloadPreview)}</code></td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // -----------------------------------------------------------------------
+        // Fetch all data
+        // -----------------------------------------------------------------------
+        async function fetchAll() {
+            try {
+                // Fetch stats
+                const statsResp = await fetch('/api/stats');
+                const stats = await statsResp.json();
+                updateStats(stats);
+                updateCharts(stats);
+
+                // Fetch new events (live poll)
+                const eventsResp = await fetch(`/api/events/live?since=${latestEventId}`);
+                const data = await eventsResp.json();
+                if (data.events && data.events.length > 0) {
+                    latestEventId = data.latest_id || 0;
+                    // Re-fetch recent events for display
+                    const recentResp = await fetch('/api/events?limit=50');
+                    const recent = await recentResp.json();
+                    updateEvents(recent);
+                }
+            } catch (err) {
+                console.error('Failed to fetch data:', err);
+            }
+        }
+
+        // -----------------------------------------------------------------------
+        // Clear events
+        // -----------------------------------------------------------------------
+        document.getElementById('btn-clear').addEventListener('click', async () => {
+            if (!confirm('Clear all logged events?')) return;
+            await fetch('/api/events/clear', { method: 'POST' });
+            latestEventId = 0;
+            fetchAll();
+        });
+
+        // -----------------------------------------------------------------------
+        // Initial load + polling
+        // -----------------------------------------------------------------------
+        fetchAll();
+        setInterval(fetchAll, 3000);
+    </script>
+</body>
+</html>
