@@ -104,82 +104,73 @@
         // -----------------------------------------------------------------------
         // Update stats cards
         // -----------------------------------------------------------------------
-        function updateStats(stats) {
-            document.getElementById('stat-total').textContent = stats.total_events || 0;
-            document.getElementById('stat-unique').textContent = stats.unique_ips || 0;
-            document.getElementById('stat-24h').textContent = stats.last_24h || 0;
-            document.getElementById('connection-count').textContent = stats.total_events || 0;
-
-            const alertCount = (stats.portscan_alerts || []).length;
-            document.getElementById('stat-alerts').textContent = alertCount;
-        }
-
-        // -----------------------------------------------------------------------
-        // Update charts
-        // -----------------------------------------------------------------------
         function updateCharts(stats) {
-            // Protocol chart
-            const protoLabels = (stats.by_protocol || []).map(r => r.protocol);
-            const protoValues = (stats.by_protocol || []).map(r => r.count);
-            const protoColors = [
-                '#e74c3c', '#3498db', '#2ecc71', '#f39c12',
-                '#9b59b6', '#1abc9c', '#e67e22', '#34495e'
-            ];
+            try {
+                // Protocol chart
+                const protoLabels = (stats.by_protocol || []).map(r => r.protocol);
+                const protoValues = (stats.by_protocol || []).map(r => r.count);
+                const protoColors = [
+                    '#e74c3c', '#3498db', '#2ecc71', '#f39c12',
+                    '#9b59b6', '#1abc9c', '#e67e22', '#34495e'
+                ];
 
-            if (protocolChart) {
-                protocolChart.data.labels = protoLabels;
-                protocolChart.data.datasets[0].data = protoValues;
-                protocolChart.update();
-            } else {
-                const ctx = document.getElementById('chart-protocol').getContext('2d');
-                protocolChart = new Chart(ctx, {
-                    type: 'doughnut',
-                    data: {
-                        labels: protoLabels,
-                        datasets: [{
-                            data: protoValues,
-                            backgroundColor: protoColors.slice(0, protoLabels.length),
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        plugins: {
-                            legend: { position: 'right' }
-                        }
-                    }
-                });
-            }
-
-            // Country chart
-            const countryLabels = (stats.by_country || []).map(r => r.country);
-            const countryValues = (stats.by_country || []).map(r => r.country === 'Private' || r.country === 'Unknown' ? r.count : r.count);
-
-            if (countryChart) {
-                countryChart.data.labels = countryLabels;
-                countryChart.data.datasets[0].data = countryValues;
-                countryChart.update();
-            } else {
-                const ctx = document.getElementById('chart-country').getContext('2d');
-                countryChart = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: countryLabels,
-                        datasets: [{
-                            label: 'Connections',
-                            data: countryValues,
-                            backgroundColor: '#3498db',
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        plugins: {
-                            legend: { display: false }
+                if (protocolChart) {
+                    protocolChart.data.labels = protoLabels;
+                    protocolChart.data.datasets[0].data = protoValues;
+                    protocolChart.update();
+                } else {
+                    const ctx = document.getElementById('chart-protocol').getContext('2d');
+                    protocolChart = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: protoLabels,
+                            datasets: [{
+                                data: protoValues,
+                                backgroundColor: protoColors.slice(0, protoLabels.length),
+                            }]
                         },
-                        scales: {
-                            y: { beginAtZero: true }
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: { position: 'right' }
+                            }
                         }
-                    }
-                });
+                    });
+                }
+
+                // Country chart
+                const countryLabels = (stats.by_country || []).map(r => r.country);
+                const countryValues = (stats.by_country || []).map(r => r.count);
+
+                if (countryChart) {
+                    countryChart.data.labels = countryLabels;
+                    countryChart.data.datasets[0].data = countryValues;
+                    countryChart.update();
+                } else {
+                    const ctx = document.getElementById('chart-country').getContext('2d');
+                    countryChart = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: countryLabels,
+                            datasets: [{
+                                label: 'Connections',
+                                data: countryValues,
+                                backgroundColor: '#3498db',
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: { display: false }
+                            },
+                            scales: {
+                                y: { beginAtZero: true }
+                            }
+                        }
+                    });
+                }
+            } catch(e) {
+                console.warn('Charts unavailable:', e.message);
             }
         }
 
