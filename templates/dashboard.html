@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Honeypot Logger Dashboard</title>
     <link rel="stylesheet" href="/static/style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <header>
@@ -104,7 +104,25 @@
         // -----------------------------------------------------------------------
         // Update stats cards
         // -----------------------------------------------------------------------
+        function updateStats(stats) {
+            document.getElementById('stat-total').textContent = stats.total_events || 0;
+            document.getElementById('stat-unique').textContent = stats.unique_ips || 0;
+            document.getElementById('stat-24h').textContent = stats.last_24h || 0;
+            document.getElementById('connection-count').textContent = stats.total_events || 0;
+
+            const alertCount = (stats.portscan_alerts || []).length;
+            document.getElementById('stat-alerts').textContent = alertCount;
+        }
+
+        // -----------------------------------------------------------------------
+        // Update charts (safe version — handles missing Chart.js)
+        // -----------------------------------------------------------------------
         function updateCharts(stats) {
+            // If Chart.js didn't load, silently skip charts
+            if (typeof Chart === 'undefined') {
+                return;
+            }
+
             try {
                 // Protocol chart
                 const protoLabels = (stats.by_protocol || []).map(r => r.protocol);
